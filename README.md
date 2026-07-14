@@ -1,156 +1,150 @@
-# 下厨房食谱爬虫 (xiachufang-spider)
+# 下厨房食谱爬虫
 
-Node.js 写的下厨房（[xiachufang.com](https://www.xiachufang.com/)）食谱爬虫，
-支持按分类抓取列表（标题、食材、评分、作者、封面、链接），可选抓取详情页（食材表、步骤、发布时间等），
-自动翻页，请求间随机延时，详情页带并发控制，遇到反爬自动降级保留基础信息。
+Node.js 编写的下厨房分类菜谱爬虫。支持列表与详情抓取、分类映射、字段标准化、数据校验、清洗和质量报告，清洗结果可由 `eatwhat-api` 的导入脚本写入 PostgreSQL。
 
-## 安装
+> 要求 Node.js ≥ 18。请遵守目标网站的使用条款并控制抓取频率。
+
+## 快速开始
+
+安装依赖：
 
 ```bash
 npm install
 ```
 
-> 要求 Node.js ≥ 18（项目使用 ESM 与顶层 `await`）。
-
-## 快速开始
-
-抓取「家常菜」分类（id=40076）第 1 页：
+抓取已经确认的“家常菜”分类，并获取详情：
 
 ```bash
-npm run crawl -- --category 40076 --start 1 --end 1
+npm run crawl -- --category 家常菜 --start 1 --end 3 --detail
 ```
 
-抓取第 1~3 页，并尝试抓取每个食谱的详情页：
+未加入预置的分类必须显式提供真实数字 ID、来源名称、API 分类和标签：
 
 ```bash
-npm run crawl -- -c 40076 -s 1 -e 3 --detail
+npm run crawl -- \
+  --category <已核实的分类ID> \
+  --source-category-name 川菜 \
+  --api-category 地方菜 \
+  --category-tag 川菜 \
+  --start 1 \
+  --end 3 \
+  --detail
 ```
 
-结果会写入 `output/recipes-<category>-p<start>-<end>-<timestamp>.json`。
+## 输出文件
 
-## CLI 参数
+每次任务生成四类文件：
 
-| 参数              | 简写 | 默认值   | 说明                                                |
-| ----------------- | ---- | -------- | --------------------------------------------------- |
-| `--category`      | `-c` | `40076`  | 分类 ID（如家常菜=40076）                            |
-| `--start`         | `-s` | `1`      | 起始页码                                             |
-| `--end`           | `-e` | `1`      | 结束页码（包含）                                     |
-| `--detail`        | `-d` | `false`  | 是否抓取详情页                                       |
-| `--concurrency`   | `-n` | `2`      | 详情页并发数（建议 ≤ 3 以免触发滑动验证）             |
-| `--min-delay`     |      | `1000`   | 请求最小间隔（毫秒）                                 |
-| `--max-delay`     |      | `2200`   | 请求最大间隔（毫秒）                                 |
-| `--output`        | `-o` | `output` | 输出目录                                             |
-| `--cookie`        |      | (空)     | 浏览器 Cookie，用于详情页绕过滑动验证（亦可读环境变量 `XCF_COOKIE`） |
+```text
+output/
+├── raw/       # 列表页和详情页原始解析结果，用于追溯
+├── clean/     # 已转换为 API 导入结构的有效菜谱
+├── rejected/  # 校验失败的菜谱及具体原因
+└── reports/   # 本批总数、有效数、拒绝数和警告项
+```
 
-## 输出格式
+只有 `clean` 文件用于数据库导入。缺少详情、食材、步骤、封面或来源 ID 的记录会进入 `rejected`，不会直接入库。
 
-每条记录都会被 `src/enrich.js` 统一加工成下面这种「业务结构」：
+## 清洗后的结构
 
 ```json
 {
   "name": "麻婆豆腐",
-  "region": "川菜",
+  "category": "地方菜",
+  "tags": ["川菜", "辣", "麻", "高蛋白"],
+  "steps": ["豆腐切块焯水。", "炒香肉末和豆瓣酱后加入豆腐。"],
+  "image": "https://i2.chuimg.com/cover.jpg",
+  "suggestions": "豆腐不要频繁翻动。",
+  "nutrition": null,
+  "difficulty": "medium",
+  "cookingTime": 30,
+  "servings": 4,
   "ingredients": [
-    { "name": "嫩豆腐", "amount": 1, "unit": "块" },
-    { "name": "猪瘦肉", "amount": 50, "unit": "g" }
-  ],
-  "seasoning": [
-    { "name": "郫县豆瓣酱", "amount": "3勺" },
-    { "name": "盐", "amount": "少许" },
-    { "name": "蒜末", "amount": "0.5茶匙" }
-  ],
-  "steps": [
     {
-      "title": "豆腐切小块,加盐水焯1分钟",
-      "description": "豆腐切小块,加盐水焯1分钟",
-      "images": ["https://i2.chuimg.com/step1.jpg"]
+      "name": "嫩豆腐",
+      "amount": "1块",
+      "unit": "块",
+      "type": "ingredient"
     },
     {
-      "title": "步骤2",
-      "description": "热锅冷油,下肉末炒散。炒到变色后盛出,加入豆瓣酱炒出红油",
-      "images": ["https://i2.chuimg.com/step2.jpg"]
+      "name": "豆瓣酱",
+      "amount": "2勺",
+      "unit": "",
+      "type": "seasoning"
     }
   ],
-  "taste": ["辣", "麻"],
-  "nutrition": ["高蛋白", "低脂"],
-  "time": "约60分钟",
-  "difficulty": "中等",
   "source": {
     "site": "xiachufang",
     "id": "107578876",
-    "url": "https://www.xiachufang.com/recipe/107578876/",
-    "cover": "https://i2.chuimg.com/...",
-    "author": "小鱼妈妈美食记",
-    "authorUrl": "https://www.xiachufang.com/cook/172383526/",
-    "score": 7.8,
-    "cookedCount": 66,
-    "publishedAt": "2025-07-08 22:24:27",
-    "detailFetched": true,
-    "detailError": null
+    "url": "https://www.xiachufang.com/recipe/107578876/"
   }
 }
 ```
 
-字段含义与生成方式：
+菜系、口味和“高蛋白/低脂”等描述会合并到 `tags`。`nutrition` 只保留真实数值营养数据，爬虫不会用推断标签伪造热量或蛋白质数值。
 
-| 字段          | 说明                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------ |
-| `name`        | 菜名，详情页优先，否则用列表页标题。                                                       |
-| `region`      | 地区/菜系。基于菜名/步骤的关键词规则推断（川/粤/湘/鲁/苏/浙/闽/徽/东北/西北/京/本帮/日/韩/西餐/东南亚），未命中则为 `家常`。 |
-| `ingredients` | 主食材列表，元素为 `{ name, amount(数字或字符串), unit }`。从详情页 `ings table` 解析；详情缺失时回落到列表页的合并字符串并自动拆分。 |
-| `seasoning`   | 调料列表，元素为 `{ name, amount }`。通过调料关键词词典（盐/酱油/醋/料酒/葱姜蒜/豆瓣等）从食材中分离。 |
-| `steps`       | 步骤数组，元素为 `{ title, description, images[] }`。`title` 取首句（≤18 字），过长则回退为 `步骤N`；`images` 为图片 URL 列表（无图为 `[]`）。 |
-| `taste`       | 口味标签：`辣 / 麻 / 酸 / 甜 / 咸 / 鲜 / 清淡`，可多选。                                    |
-| `nutrition`   | 营养标签：`高蛋白 / 低脂 / 快手 / 主食 / 甜点 / 素食 / 重口 / 家常`，可多选。               |
-| `time`        | 耗时。优先从标题里识别 `xx分钟 / xx小时`；含「炖煲焖卤」等慢炖词或步骤多则增大估值；否则按步骤数粗估。 |
-| `difficulty`  | 难度：`简单 / 中等 / 困难`。基于步骤数、食材+调料总数及是否含「打发/揉面/挂浆」等技法。     |
-| `source`      | 元信息：原站 ID、URL、封面、作者、评分、做过人数、发布时间，以及详情是否抓到、错误码。     |
+## CLI 参数
 
-> 详情页若被反爬拦截，`source.detailFetched=false` 且 `source.detailError="CAPTCHA_REQUIRED"`，但 `ingredients/seasoning` 仍可由列表页字段降级生成，不影响整批任务。
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `--category, -c` | `家常菜` | 已确认的预置名称或真实数字分类 ID |
+| `--source-category-name` | - | 来源分类名，使用未预置 ID 时必填 |
+| `--api-category` | - | API 一级分类，使用未预置 ID 时必填 |
+| `--category-tag` | - | 每条菜谱附加标签，可重复传入 |
+| `--start, -s` | `1` | 起始页 |
+| `--end, -e` | `1` | 结束页，包含该页 |
+| `--detail, -d` | `false` | 抓取食材、步骤和小贴士；正式导入必须开启 |
+| `--max-recipes` | `0` | 本次最多处理多少条，0 表示不限制；适合小批联调 |
+| `--concurrency, -n` | `2` | 详情并发数，建议不超过 2～3 |
+| `--min-delay` | `1000` | 请求最小延迟，毫秒 |
+| `--max-delay` | `2200` | 请求最大延迟，毫秒 |
+| `--output, -o` | `output` | 输出根目录 |
+| `--cookie` | `XCF_COOKIE` | 登录 Cookie；优先使用环境变量，避免出现在命令历史中 |
 
-## 关于反爬
+## Cookie 与反爬
 
-下厨房列表页基本无反爬，但**详情页**有阿里云滑动验证，纯 HTTP 抓取很容易被拦截。建议：
+建议先在 Chrome 中登录并完成可能出现的验证，然后通过环境变量运行：
 
-1. 在浏览器登录后，从 DevTools → Application → Cookies 复制 `xiachufang.com` 域下的全部 Cookie，传给 `--cookie` 或设置环境变量 `XCF_COOKIE`。
-2. 控制 `--concurrency`（≤ 3）和 `--min-delay/--max-delay`（≥ 1s）。
-3. 若仍频繁失败，可改为对失败列表二次重跑，或使用代理 IP 池。
+```bash
+export XCF_COOKIE='<浏览器会话 Cookie>'
+npm run crawl -- --category 家常菜 --start 1 --end 3 --detail
+```
+
+Cookie 不会写入输出 JSON。命中验证码、限流或详情解析失败的记录会在报告中体现；不要通过提高并发规避验证。
+
+## 导入数据库
+
+在 API 项目中先校验：
+
+```bash
+cd ../eatwhat-api
+npm run import:recipes -- ../spider-cookbook/output/clean/<文件名>.json --dry-run
+```
+
+再正式导入：
+
+```bash
+npm run import:recipes -- ../spider-cookbook/output/clean/<文件名>.json
+```
+
+导入脚本根据 `source.site + source.id` 创建或更新菜谱，并同步食材及 `RecipeIngredient` 关联，因此同一文件可以安全重复执行。
+
+## 测试
+
+```bash
+npm test
+```
 
 ## 项目结构
 
-```
+```text
 src/
-├── index.js          # CLI 入口
-├── crawler.js        # 主流程编排（翻页、并发详情、enrich、写文件）
-├── http.js           # axios 客户端 + 重试 + 429/验证码识别 + 随机延时
-├── listParser.js     # 列表页 cheerio 解析（原始字段）
-├── detailParser.js   # 详情页 cheerio 解析（原始字段）
-└── enrich.js         # 把原始字段加工为业务结构
-                      #   ├─ splitNameAmount/parseAmount  数量+单位拆分
-                      #   ├─ isSeasoning                  调料识别
-                      #   └─ inferRegion/Taste/Nutrition/Time/Difficulty 标签推断
+├── categoryConfig.js # 已核实分类预置和 API 分类映射
+├── crawler.js        # 抓取、原始输出、清洗和报告编排
+├── detailParser.js   # 详情页解析
+├── enrich.js         # API 字段转换和标签推断
+├── http.js           # 请求、重试、限流和验证码识别
+├── index.js          # CLI
+├── listParser.js     # 列表页解析
+└── validate.js       # 清洗、去重和质量校验
 ```
-
-## 自定义标签规则
-
-所有标签词典都集中在 `src/enrich.js` 里，可以按需修改：
-
-- `SEASONING_TOKENS` / `NOT_SEASONING_TOKENS`：调料识别词典与排除词
-- `REGION_RULES`：菜系关键词
-- `TASTE_RULES`、`PROTEIN_KWS`、`LIGHT_COOK_KWS`、`STAPLE_KWS`、`DESSERT_KWS`、`VEG_KWS`：口味与营养标签
-- `SLOW_COOK_KWS`、`HARD_TECHNIQUE_KWS`：影响耗时与难度的关键词
-
-## 常见分类 ID 参考
-
-可访问 <https://www.xiachufang.com/category/> 找到分类 URL 中的数字 ID。例如：
-
-| 分类   | ID    |
-| ------ | ----- |
-| 家常菜 | 40076 |
-| 下午茶 | 40078 |
-| 烘焙   | 40077 |
-| 早餐   | 40847 |
-
-## 提示
-
-请遵守网站的 robots 协议与使用条款，控制抓取频率，仅用于学习/个人使用。

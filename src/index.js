@@ -2,6 +2,7 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { crawl } from './crawler.js';
+import { resolveCategoryConfig } from './categoryConfig.js';
 
 const argv = yargs(hideBin(process.argv))
   .scriptName('xcf-spider')
@@ -9,8 +10,22 @@ const argv = yargs(hideBin(process.argv))
   .option('category', {
     alias: 'c',
     type: 'string',
-    default: '40076',
-    describe: '下厨房分类 ID（默认 40076 家常菜）',
+    default: '家常菜',
+    describe: '已配置的分类/搜索名称，或下厨房数字分类 ID',
+  })
+  .option('source-category-name', {
+    type: 'string',
+    describe: '来源分类名称；传入未预置的数字 ID 时必填',
+  })
+  .option('api-category', {
+    type: 'string',
+    describe: 'API 一级分类；传入未预置的数字 ID 时必填',
+  })
+  .option('category-tag', {
+    type: 'array',
+    string: true,
+    default: [],
+    describe: '附加到每条菜谱的标签，可重复传入',
   })
   .option('start', {
     alias: 's',
@@ -29,6 +44,11 @@ const argv = yargs(hideBin(process.argv))
     type: 'boolean',
     default: false,
     describe: '是否抓取详情页（注意：详情页有反爬，可能需要 cookie）',
+  })
+  .option('max-recipes', {
+    type: 'number',
+    default: 0,
+    describe: '本次最多处理多少条菜谱，0 表示不限制',
   })
   .option('concurrency', {
     alias: 'n',
@@ -60,11 +80,19 @@ const argv = yargs(hideBin(process.argv))
   .help()
   .alias('h', 'help').argv;
 
-await crawl({
+const categoryConfig = resolveCategoryConfig({
   category: argv.category,
+  sourceCategoryName: argv['source-category-name'],
+  apiCategory: argv['api-category'],
+  categoryTags: argv['category-tag'],
+});
+
+await crawl({
+  categoryConfig,
   startPage: argv.start,
   endPage: argv.end,
   detail: argv.detail,
+  maxRecipes: argv['max-recipes'],
   concurrency: argv.concurrency,
   minDelay: argv['min-delay'],
   maxDelay: argv['max-delay'],

@@ -283,6 +283,21 @@ export function inferDifficulty({ steps = [], ingredients = [], seasoning = [], 
   return '简单';
 }
 
+export function timeLabelToMinutes(value) {
+  const text = String(value || '');
+  const hours = text.match(/([\d.]+)\s*小时/);
+  if (hours) return Math.max(1, Math.round(Number(hours[1]) * 60));
+  const minutes = text.match(/(\d+)\s*分钟/);
+  if (minutes) return Math.max(1, Number(minutes[1]));
+  return 30;
+}
+
+const DIFFICULTY_VALUES = {
+  简单: 'easy',
+  中等: 'medium',
+  困难: 'hard',
+};
+
 // ============ 步骤规整 ============
 
 /**
@@ -328,7 +343,7 @@ export function buildStep(raw, index = 0) {
  * @param {object} listItem 列表页解析得到的对象（含 id/title/url/cover/ingredients(string[])/score/author 等）
  * @param {object|null} detail 详情页解析得到的对象（可能为 null）
  */
-export function enrichRecipe(listItem, detail) {
+export function enrichRecipe(listItem, detail, context = {}) {
   const title = (detail && detail.title) || listItem.title || '';
 
   let rawIngs = [];
@@ -363,24 +378,49 @@ export function enrichRecipe(listItem, detail) {
   const taste = inferTaste(`${title} ${rawIngs.map((i) => i.name).join(' ')} ${stepTexts.join(' ')}`);
   const nutrition = inferNutrition({ title, ingredients, steps: stepTexts });
   const time = inferTime({ title, steps: stepTexts });
-  const difficulty = inferDifficulty({ title, steps: stepTexts, ingredients, seasoning });
+  const difficultyLabel = inferDifficulty({ title, steps: stepTexts, ingredients, seasoning });
   const region = inferRegion(`${title} ${stepTexts.join(' ')}`);
+
+  const tags = Array.from(
+    new Set([
+      ...(context.categoryTags || []),
+      ...(region && region !== '家常' ? [region] : []),
+      ...taste,
+      ...nutrition,
+    ])
+  );
+
+  const importIngredients = [
+    ...ingredients.map((item) => ({
+      name: item.name,
+      amount: item.amount,
+      unit: item.unit,
+      type: 'ingredient',
+    })),
+    ...seasoning.map((item) => ({
+      name: item.name,
+      amount: item.amount,
+      unit: '',
+      type: 'seasoning',
+    })),
+  ];
 
   return {
     name: title,
-    region,
-    ingredients,
-    seasoning,
-    steps,
-    taste,
-    nutrition,
-    time,
-    difficulty,
+    category: context.apiCategory || '其他',
+    tags,
+    steps: stepTexts,
+    image: (detail && detail.cover) || listItem.cover || '',
+    suggestions: detail?.tip || detail?.description || '',
+    nutrition: null,
+    difficulty: DIFFICULTY_VALUES[difficultyLabel] || 'medium',
+    cookingTime: timeLabelToMinutes(time),
+    servings: 4,
+    ingredients: importIngredients,
     source: {
       site: 'xiachufang',
       id: listItem.id,
       url: listItem.url,
-      cover: (detail && detail.cover) || listItem.cover || '',
       author: listItem.author || null,
       authorUrl: listItem.authorUrl || null,
       score: detail?.score ?? listItem.score ?? null,

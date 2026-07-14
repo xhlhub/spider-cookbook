@@ -46,6 +46,16 @@ export function isCaptchaPage(html) {
   );
 }
 
+/** 识别正常中文及浏览器错误解码后的“访问频率太高”页面 */
+export function isRateLimitPage(html) {
+  return (
+    typeof html === 'string' &&
+    (html.includes('访问频率太高') ||
+      html.includes('频率太高') ||
+      html.includes('璁块棶棰戠巼澶珮'))
+  );
+}
+
 /**
  * 带重试的 GET 请求
  * @param {import('axios').AxiosInstance} client
@@ -68,14 +78,21 @@ export async function getHtml(client, url, opts = {}) {
         err.code = 'CAPTCHA_REQUIRED';
         throw err;
       }
+      if (isRateLimitPage(html)) {
+        const err = new Error('RATE_LIMITED');
+        err.code = 'RATE_LIMITED';
+        throw err;
+      }
       return html;
     } catch (err) {
       lastErr = err;
       const status = err.response?.status;
       const code = err.code;
       const isCaptcha = code === 'CAPTCHA_REQUIRED';
-      const isRateLimited = status === 429 ||
-        (typeof err.response?.data === 'string' && err.response.data.includes('频率太高'));
+      const isRateLimited =
+        code === 'RATE_LIMITED' ||
+        status === 429 ||
+        isRateLimitPage(err.response?.data);
 
       if (isRateLimited) {
         err.code = 'RATE_LIMITED';
