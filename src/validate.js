@@ -25,6 +25,33 @@ function cleanText(value) {
     .trim();
 }
 
+function normalizeRecipeName(value, ingredients = []) {
+  let name = cleanText(value);
+  const bracketedDish = name.match(/【([^】]{2,24})】/);
+
+  // Some source titles wrap the actual dish name in promotional copy.
+  if (bracketedDish && /(?:下饭|教程|随手|好吃)/.test(name.replace(bracketedDish[0], ''))) {
+    name = bracketedDish[1];
+  }
+
+  name = name
+    .replace(/^(?:零基础|新手|小白)(?:教程|必学)?\s*[,，:：—-]?\s*/, '')
+    .replace(/^(?:湘菜|川菜|粤菜|东北菜)馆\s*[-—:：]\s*/, '')
+    .replace(/[!！]+$/g, '')
+    .trim();
+
+  // A generic "regional stir-fry" title can be made useful when its main
+  // ingredients clearly identify the dish.
+  if (/^(?:湘菜|川菜|粤菜|东北菜)?小炒$/.test(name)) {
+    const ingredientNames = (ingredients || []).map((item) => cleanText(item?.name));
+    const hasBeef = ingredientNames.some((item) => item.includes('牛肉'));
+    const hasCoriander = ingredientNames.some((item) => item.includes('香菜'));
+    if (hasBeef && hasCoriander) return '香菜小炒牛肉';
+  }
+
+  return name;
+}
+
 function isHttpUrl(value) {
   try {
     const url = new URL(value);
@@ -90,7 +117,7 @@ function mergeIngredients(items) {
 export function cleanRecipe(raw) {
   const source = raw?.source || {};
   return {
-    name: cleanText(raw?.name),
+    name: normalizeRecipeName(raw?.name, raw?.ingredients),
     category: cleanText(raw?.category),
     tags: Array.from(
       new Set((raw?.tags || []).map(cleanText).filter(Boolean))

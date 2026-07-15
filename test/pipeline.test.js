@@ -103,6 +103,54 @@ test('cleans aliases and rejects incomplete detail records', () => {
   assert.equal(invalidResult.rejected[0].errors.includes('步骤为空，详情页可能抓取失败'), true);
 });
 
+test('normalizes promotional recipe titles to concise dish names', () => {
+  const base = {
+    category: '地方菜',
+    tags: ['湘菜'],
+    steps: ['炒熟即可。'],
+    image: 'https://example.com/cover.jpg',
+    suggestions: '',
+    nutrition: null,
+    difficulty: 'easy',
+    cookingTime: 15,
+    servings: 2,
+    ingredients: [{ name: '食材', amount: '适量', unit: '', type: 'ingredient' }],
+    source: {
+      site: 'xiachufang',
+      id: 'title-test',
+      url: 'https://www.xiachufang.com/recipe/title-test/',
+    },
+  };
+
+  const cases = [
+    {
+      name: '零基础教程，湘菜小炒',
+      ingredients: [
+        { name: '牛肉（筋膜要少）', amount: '半斤', type: 'ingredient' },
+        { name: '香菜/芹菜', amount: '适量', type: 'ingredient' },
+      ],
+      expected: '香菜小炒牛肉',
+    },
+    {
+      name: '下饭湘菜【小炒攸县香干】，随手一炒就好吃！',
+      expected: '小炒攸县香干',
+    },
+    { name: '湘菜馆-金钱蛋', expected: '金钱蛋' },
+  ];
+
+  for (const [index, item] of cases.entries()) {
+    const result = cleanAndValidateRecipes([
+      {
+        ...base,
+        name: item.name,
+        ingredients: item.ingredients || base.ingredients,
+        source: { ...base.source, id: `title-test-${index}` },
+      },
+    ]);
+    assert.equal(result.clean[0].name, item.expected);
+  }
+});
+
 test('detects both normal and mojibake rate-limit pages', () => {
   assert.equal(isRateLimitPage('访问频率太高，请稍后再试'), true);
   assert.equal(isRateLimitPage('璁块棶棰戠巼澶珮锛岃绋嶅悗鍐嶈瘯'), true);
