@@ -1,5 +1,6 @@
 const API_CATEGORIES = new Set(['家常菜', '快手菜', '地方菜', '妈妈菜', '其他']);
 const DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
+const COLLECTION_TITLE_RE = /(?:\d{2,}\s*道|合集|菜单|大全)/;
 
 const INGREDIENT_ALIASES = new Map([
   ['番茄', '西红柿'],
@@ -124,6 +125,7 @@ export function validateRecipe(recipe) {
 
   if (!recipe.name) errors.push('菜名为空');
   if (recipe.name.length > 100) warnings.push('菜名超过 100 个字符');
+  if (COLLECTION_TITLE_RE.test(recipe.name)) errors.push('疑似菜谱合集或菜单');
   if (!API_CATEGORIES.has(recipe.category)) errors.push('API 分类不合法');
   if (!recipe.image || !isHttpUrl(recipe.image)) errors.push('封面图片 URL 无效');
   if (!recipe.source.site) errors.push('来源站点为空');
@@ -140,6 +142,7 @@ export function validateRecipe(recipe) {
   }
   if (recipe.ingredients.length === 0) errors.push('食材为空，详情页可能抓取失败');
   if (recipe.steps.length === 0) errors.push('步骤为空，详情页可能抓取失败');
+  if (recipe.steps.length > 30) errors.push('步骤超过 30 条，疑似菜谱合集');
   if (recipe.steps.some((step) => step.length > 1000)) warnings.push('存在超长步骤');
 
   return { valid: errors.length === 0, errors, warnings };

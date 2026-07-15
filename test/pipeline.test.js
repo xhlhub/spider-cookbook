@@ -108,3 +108,28 @@ test('detects both normal and mojibake rate-limit pages', () => {
   assert.equal(isRateLimitPage('璁块棶棰戠巼澶珮锛岃绋嶅悗鍐嶈瘯'), true);
   assert.equal(isRateLimitPage('<html>正常菜谱</html>'), false);
 });
+
+test('rejects recipe collections disguised as a single recipe', () => {
+  const collection = {
+    name: '30道广东家常菜',
+    category: '地方菜',
+    tags: ['粤菜'],
+    steps: Array.from({ length: 31 }, (_, index) => `步骤 ${index + 1}`),
+    image: 'https://example.com/collection.jpg',
+    suggestions: '',
+    nutrition: null,
+    difficulty: 'hard',
+    cookingTime: 60,
+    servings: 4,
+    ingredients: [{ name: '食材', amount: '适量', unit: '', type: 'ingredient' }],
+    source: {
+      site: 'xiachufang',
+      id: 'collection-1',
+      url: 'https://www.xiachufang.com/recipe/collection-1/',
+    },
+  };
+  const result = cleanAndValidateRecipes([collection]);
+  assert.equal(result.report.rejected, 1);
+  assert.equal(result.rejected[0].errors.includes('疑似菜谱合集或菜单'), true);
+  assert.equal(result.rejected[0].errors.includes('步骤超过 30 条，疑似菜谱合集'), true);
+});

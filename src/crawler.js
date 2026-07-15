@@ -140,9 +140,11 @@ export async function crawl(opts) {
             failed++;
             r._detail = null;
             r.detailError = err.code || err.message;
-            if (err.code === 'RATE_LIMITED') {
-              stopReason = 'RATE_LIMITED';
-              console.warn('[熔断] 详情页触发限流，停止本批剩余详情请求');
+            if (err.code === 'RATE_LIMITED' || err.code === 'CAPTCHA_REQUIRED') {
+              stopReason = err.code;
+              console.warn(
+                `[熔断] 详情页触发${err.code === 'RATE_LIMITED' ? '限流' : '验证码'}，停止本批剩余详情请求`
+              );
             }
           } finally {
             done++;
